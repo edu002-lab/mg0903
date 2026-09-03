@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -63,8 +65,15 @@
                     <p class="text-xs text-blue-100">디지털금융본부 | 맞춤형 대출 상환 계산기</p>
                 </div>
             </div>
-            <div class="text-right text-xs bg-mg-darkblue/40 px-3 py-1.5 rounded-full border border-blue-300/30">
-                <i class="fa-solid fa-headset me-1 text-mg-accent"></i> 창구 상담 & 웹 겸용 시스템
+            <div class="flex items-center gap-2">
+                <div class="text-right text-xs bg-mg-darkblue/40 px-3 py-1.5 rounded-full border border-blue-300/30 hidden sm:block">
+                    <i class="fa-solid fa-headset me-1 text-mg-accent"></i> 창구 상담 & 웹 겸용 시스템
+                </div>
+                <!-- 홈 버튼 -->
+                <a href="https://edu002-lab.github.io/mg0903/" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-mg-blue hover:bg-mg-lightblue rounded-full font-bold text-xs shadow-sm transition border border-white/80">
+                    <i class="fa-solid fa-house"></i>
+                    <span>홈</span>
+                </a>
             </div>
         </div>
     </header>
@@ -225,6 +234,20 @@
                     </div>
                 </div>
 
+                <!-- Monthly Repayment Chart Card -->
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-chart-column text-mg-blue text-base"></i>
+                            <h3 class="font-bold text-slate-800 text-base">월별 상환 구성 그래프</h3>
+                        </div>
+                        <span class="text-xs text-slate-500 font-medium">(단위: 원)</span>
+                    </div>
+                    <div class="relative w-full h-64">
+                        <canvas id="repaymentChart"></canvas>
+                    </div>
+                </div>
+
                 <!-- Schedule Table Card -->
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 flex-grow flex flex-col overflow-hidden">
                     <div class="p-5 border-b border-slate-100 flex items-center justify-between">
@@ -277,6 +300,7 @@
         // 전역 상태 관리 변수
         let periodUnit = 'month'; // 'month' or 'year'
         let scheduleData = []; // CSV 다운로드용 데이터 저장소
+        let repaymentChartInstance = null; // Chart.js 인스턴스
 
         // 페이지 로드 시 초기화
         window.addEventListener('DOMContentLoaded', () => {
@@ -536,6 +560,9 @@
                 descElem.innerText = '만기까지 매월 동일한 금액을 납부합니다.';
             }
 
+            // 차트 렌더링
+            renderChart(schedule);
+
             // 테이블 렌더링
             const tbody = document.getElementById('scheduleTableBody');
             tbody.innerHTML = '';
@@ -562,6 +589,107 @@
                     <td class="px-4 py-3 text-right text-slate-500">${formatNumber(row.balance)} 원</td>
                 `;
                 tbody.appendChild(tr);
+            });
+        }
+
+        // 월별 상환 구성 그래프 (Chart.js)
+        function renderChart(schedule) {
+            const canvas = document.getElementById('repaymentChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+
+            if (schedule.length === 0) {
+                if (repaymentChartInstance) {
+                    repaymentChartInstance.destroy();
+                    repaymentChartInstance = null;
+                }
+                return;
+            }
+
+            const labels = schedule.map(row => `${row.month}회`);
+            const principalData = schedule.map(row => row.principalPayment);
+            const interestData = schedule.map(row => row.interestPayment);
+
+            if (repaymentChartInstance) {
+                repaymentChartInstance.destroy();
+            }
+
+            repaymentChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '납부 원금',
+                            data: principalData,
+                            backgroundColor: '#005bac',
+                            borderRadius: 3,
+                        },
+                        {
+                            label: '대출 이자',
+                            data: interestData,
+                            backgroundColor: '#f59e0b',
+                            borderRadius: 3,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                            grid: { display: false },
+                            ticks: {
+                                font: { size: 10 },
+                                maxRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: 12
+                            }
+                        },
+                        y: {
+                            stacked: true,
+                            grid: { color: '#f1f5f9' },
+                            ticks: {
+                                font: { size: 10 },
+                                callback: function(value) {
+                                    if (value >= 100000000) return (value / 100000000) + '억원';
+                                    if (value >= 10000) return (value / 10000).toLocaleString('ko-KR') + '만원';
+                                    return value.toLocaleString('ko-KR') + '원';
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            align: 'end',
+                            labels: {
+                                usePointStyle: true,
+                                boxWidth: 8,
+                                font: { size: 12, weight: 'bold' }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y.toLocaleString('ko-KR') + ' 원';
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
             });
         }
 
